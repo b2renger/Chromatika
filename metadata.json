@@ -1,0 +1,6 @@
+{
+  "name": "Color Mix Puzzle",
+  "description": "Un jeu de puzzle oÃ¹ l'on doit mÃ©langer des couleurs primaires pour reproduire un motif donnÃ©.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}
