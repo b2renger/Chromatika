@@ -36,15 +36,71 @@ The project is a standard Next.js 15+ application using the App Router.
 
 ## Building and Deployment
 
-To build the application for production:
-```bash
-npm run build
-```
+By default `next.config.ts` is configured with `output: 'standalone'`, which produces a Node.js server bundle under `.next/standalone` (intended for a Node host). For GitHub Pages we instead produce a fully static export and publish it to an orphan branch named `live`.
 
-The application produces a production-ready static-compatible build in the `dist/` directory.
+The site is served at `https://b2renger.github.io/Chromatika/`, so the static assets must be prefixed with `/Chromatika`. GitHub Pages also runs Jekyll by default, which strips any directory whose name starts with an underscore — and Next.js outputs all assets under `_next/`. Both quirks are handled by the procedure below.
 
-### Deploying to GitHub Pages
-Since this project produces a static-compatible build, you can deploy it to GitHub Pages:
-1. Ensure your `next.config.ts` is configured for static export if required by your hosting environment.
-2. Build the app using `npm run build`.
-3. Use a tool like `gh-pages` or configure GitHub Actions to deploy the contents of the built output folder to your repository's `gh-pages` branch.
+### Manual deploy: build and push to the `live` branch
+
+Run these steps from the project root. They edit `next.config.ts` temporarily, build, push the artifacts to the orphan `live` branch, then restore the config.
+
+1. **Edit `next.config.ts`** — replace the `images` and `output` lines so the export uses the right asset paths:
+   ```ts
+   images: {
+     unoptimized: true,
+     remotePatterns: [/* unchanged */],
+   },
+   output: 'export',
+   basePath: '/Chromatika',
+   assetPrefix: '/Chromatika/',
+   ```
+
+2. **Build the static site**:
+   ```bash
+   rm -rf out
+   npm run build
+   ```
+   The static site lands in `out/`. Verify the asset paths look right:
+   ```bash
+   grep -o 'href="[^"]*"' out/index.html | head
+   # expect: href="/Chromatika/_next/static/..."
+   ```
+
+3. **Restore `next.config.ts`** so `main` keeps its original config:
+   ```bash
+   git checkout -- next.config.ts
+   ```
+
+4. **Stage the build in an orphan worktree** and add the `.nojekyll` flag:
+   ```bash
+   git worktree add --detach ../Chromatika-live-tmp
+   cd ../Chromatika-live-tmp
+   git checkout --orphan live
+   git rm -rf .
+   cp -r ../Chromatika/out/. .
+   touch .nojekyll
+   ```
+
+5. **Commit and force-push** (force-push replaces the previous build — this is the standard pattern for a single-artifact deploy branch):
+   ```bash
+   git add -A
+   git commit -m "Build: static export from main@$(cd ../Chromatika && git rev-parse --short HEAD)"
+   git push --force-with-lease origin live
+   ```
+
+6. **Clean up** the temporary worktree and local `live` branch:
+   ```bash
+   cd ../Chromatika
+   git worktree remove ../Chromatika-live-tmp
+   git branch -D live
+   ```
+
+### One-time GitHub Pages setup
+
+In the repo's GitHub settings → **Pages**: set **Source** to *Deploy from a branch*, **Branch** to `live`, **Folder** to `/ (root)`. After the first push, propagation usually takes 30–60 seconds. Hard-reload (Ctrl+Shift+R) to bypass the browser/CDN cache.
+
+### Troubleshooting
+
+- **404s on `/_next/static/...` assets** → either `basePath` is missing/wrong, or `.nojekyll` is missing on the `live` branch.
+- **Renaming the repo** → update `basePath` and `assetPrefix` in step 1 to match the new repo name.
+- **Custom domain** (e.g. via `CNAME`) → drop `basePath` and `assetPrefix` entirely; also commit a `CNAME` file into the `live` branch in step 4.
